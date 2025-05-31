@@ -13,6 +13,7 @@ import logging
 from urllib.parse import urlencode, quote_plus
 from dataclasses import dataclass
 from pathlib import Path
+from config import JOB_BOARD_CONFIG
 
 # Load environment variables from .env file
 load_dotenv()
@@ -91,30 +92,33 @@ class EnhancedJobFinder:
         
     def _initialize_job_boards(self) -> List[JobBoard]:
         """Initialize comprehensive list of job boards with their configurations"""
-        return [
+        # Import configuration from config.py
+        board_config = JOB_BOARD_CONFIG
+        
+        all_boards = [
             JobBoard(
                 name="LinkedIn",
                 base_url="https://www.linkedin.com",
                 search_pattern="/jobs/search/?keywords={keywords}&location={location}&f_TPR=r86400",
-                needs_stealth=True  # LinkedIn has strong anti-bot detection
+                needs_stealth=False
             ),
             JobBoard(
                 name="Indeed",
                 base_url="https://www.indeed.com",
                 search_pattern="/jobs?q={keywords}&l={location}&fromage=1&sort=date",
-                needs_stealth=True
+                needs_stealth=False
             ),
             JobBoard(
                 name="Glassdoor",
                 base_url="https://www.glassdoor.com",
                 search_pattern="/Job/jobs.htm?sc.keyword={keywords}&locT=C&locId=&locKeyword={location}",
-                needs_stealth=True
+                needs_stealth=False
             ),
             JobBoard(
                 name="ZipRecruiter",
                 base_url="https://www.ziprecruiter.com",
                 search_pattern="/jobs/search?search={keywords}&location={location}&days=1",
-                needs_stealth=True
+                needs_stealth=False
             ),
             JobBoard(
                 name="AngelList",
@@ -132,106 +136,68 @@ class EnhancedJobFinder:
                 name="SimplyHired",
                 base_url="https://www.simplyhired.com",
                 search_pattern="/search?q={keywords}&l={location}&fdb=1",
-                needs_stealth=True
+                needs_stealth=False
             ),
             JobBoard(
                 name="Monster",
                 base_url="https://www.monster.com",
                 search_pattern="/jobs/search?q={keywords}&where={location}&tm=1",
-                needs_stealth=True
+                needs_stealth=False
             ),
             JobBoard(
                 name="Dice",
                 base_url="https://www.dice.com",
                 search_pattern="/jobs?q={keywords}&location={location}&filters.postedDate=ONE",
-                needs_stealth=True
+                needs_stealth=False
             )
         ]
+        
+        # Return only enabled boards
+        enabled_boards = [board for board in all_boards if board_config.get(board.name, False)]
+        
+        logger.info(f"Enabled job boards: {[board.name for board in enabled_boards]}")
+        disabled_boards = [board.name for board in all_boards if not board_config.get(board.name, False)]
+        if disabled_boards:
+            logger.info(f"Disabled job boards: {disabled_boards}")
+        
+        return enabled_boards
 
     def _get_browser_config(self, needs_stealth: bool = False) -> BrowserConfig:
-        """Get optimized browser configuration for different site requirements"""
-        if needs_stealth:
-            # Enhanced stealth configuration for anti-bot protection
-            return BrowserConfig(
-                headless=True,
-                viewport_width=1920,
-                viewport_height=1080,
-                java_script_enabled=True,
-                use_persistent_context=True,
-                user_data_dir=self.user_data_dir,
-                user_agent_mode="random",  # Use random user agent rotation
-                user_agent_generator_config={
-                    "device_type": "desktop",
-                    "os_type": "windows"
-                },
-                # Enhanced headers to mimic real browser
-                headers={
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-                    "Accept-Language": "en-US,en;q=0.5",
-                    "Accept-Encoding": "gzip, deflate, br",
-                    "DNT": "1",
-                    "Connection": "keep-alive",
-                    "Upgrade-Insecure-Requests": "1",
-                    "Sec-Fetch-Dest": "document",
-                    "Sec-Fetch-Mode": "navigate",
-                    "Sec-Fetch-Site": "none",
-                    "Sec-Fetch-User": "?1",
-                    "Cache-Control": "max-age=0",
-                },
-                # Additional anti-detection arguments
-                extra_args=[
-                    "--disable-blink-features=AutomationControlled",
-                    "--disable-features=VizDisplayCompositor",
-                    "--disable-extensions",
-                    "--no-first-run",
-                    "--disable-default-apps",
-                    "--disable-component-extensions-with-background-pages",
-                ]
-            )
-        else:
-            # Standard configuration for less protected sites
-            return BrowserConfig(
-                headless=True,
-                viewport_width=1920,
-                viewport_height=1080,
-                java_script_enabled=True,
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            )
+        """Get optimized browser configuration - simplified for reliability"""
+        # Single configuration that works reliably across all sites
+        return BrowserConfig(
+            headless=True,
+            viewport_width=1920,
+            viewport_height=1080,
+            java_script_enabled=True,
+            # Simple, reliable user agent
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            # Basic headers
+            headers={
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.5",
+                "Accept-Encoding": "gzip, deflate",
+                "Connection": "keep-alive",
+            },
+            ignore_https_errors=True,
+            light_mode=True,  # Better performance
+            verbose=True
+        )
 
     def _get_crawler_config(self, needs_stealth: bool = False) -> CrawlerRunConfig:
-        """Get optimized crawler configuration for different site requirements"""
-        if needs_stealth:
-            # Enhanced stealth crawler configuration
-            return CrawlerRunConfig(
-                cache_mode=CacheMode.BYPASS,
-                page_timeout=30000,  # Longer timeout for slower loading
-                wait_until="networkidle",  # Wait for network to be idle
-                magic=True,  # Enable magic mode for anti-bot handling
-                simulate_user=True,  # Simulate user behavior
-                override_navigator=True,  # Override navigator properties
-                remove_overlay_elements=True,  # Remove popups/modals
-                scan_full_page=True,  # Scroll to load dynamic content
-                scroll_delay=1.0,  # Slower scrolling to appear human
-                delay_before_return_html=3.0,  # Wait before extracting content
-                wait_for_images=True,  # Wait for images to load
-                # Add random delays to mimic human behavior
-                mean_delay=2.0,
-                max_range=4.0,
-                verbose=True
-            )
-        else:
-            # Standard configuration
-            return CrawlerRunConfig(
-                cache_mode=CacheMode.BYPASS,
-                page_timeout=15000,
-                wait_until="domcontentloaded",
-                delay_before_return_html=2.0,
-                verbose=True
-            )
+        """Get optimized crawler configuration - simplified for reliability"""
+        # Single configuration that works reliably across all sites
+        return CrawlerRunConfig(
+            cache_mode=CacheMode.BYPASS,
+            page_timeout=20000,  # 20 second timeout
+            wait_until="domcontentloaded",
+            delay_before_return_html=2.0,  # Brief delay to let content settle
+            verbose=True
+        )
 
     async def search_job_board(self, job_board: JobBoard, keywords: str, location: str = "") -> List[JobListing]:
-        """Search a specific job board for job listings with enhanced anti-bot protection"""
-        logger.info(f"Searching {job_board.name} for '{keywords}' in '{location}' (stealth: {job_board.needs_stealth})")
+        """Search a specific job board for job listings with reliable configuration"""
+        logger.info(f"Searching {job_board.name} for '{keywords}' in '{location}'")
         
         # Construct search URL
         search_url = job_board.base_url + job_board.search_pattern.format(
@@ -243,13 +209,13 @@ class EnhancedJobFinder:
         
         jobs = []
         
-        # Get appropriate configuration based on site requirements
-        browser_config = self._get_browser_config(job_board.needs_stealth)
-        crawler_config = self._get_crawler_config(job_board.needs_stealth)
+        # Get standard configuration for all sites
+        browser_config = self._get_browser_config()
+        crawler_config = self._get_crawler_config()
         
         async with AsyncWebCrawler(config=browser_config) as crawler:
             try:
-                # Use LLM-based extraction with enhanced configuration
+                # Use LLM-based extraction
                 llm_jobs = await self._extract_with_llm(crawler, search_url, job_board.name, crawler_config)
                 if llm_jobs:
                     jobs.extend(llm_jobs)
@@ -259,108 +225,12 @@ class EnhancedJobFinder:
                 
             except Exception as e:
                 logger.error(f"Error searching {job_board.name}: {str(e)}")
-                
-                # For stealth sites, try a fallback approach
-                if job_board.needs_stealth:
-                    logger.info(f"Attempting fallback method for {job_board.name}")
-                    try:
-                        fallback_jobs = await self._fallback_stealth_extraction(crawler, search_url, job_board.name, crawler_config)
-                        if fallback_jobs:
-                            jobs.extend(fallback_jobs)
-                            logger.info(f"Fallback found {len(fallback_jobs)} jobs from {job_board.name}")
-                    except Exception as fallback_e:
-                        logger.error(f"Fallback also failed for {job_board.name}: {str(fallback_e)}")
         
         # Set source information
         for job in jobs:
             job.source_site = job_board.name
             job.source_url = search_url
         
-        return jobs
-
-    async def _fallback_stealth_extraction(self, crawler, url: str, site_name: str, crawler_config: CrawlerRunConfig) -> List[JobListing]:
-        """Fallback extraction method for heavily protected sites"""
-        
-        # Enhanced stealth configuration for fallback
-        stealth_config = crawler_config.clone(
-            # Even more aggressive stealth settings
-            page_timeout=45000,
-            delay_before_return_html=5.0,
-            scan_full_page=True,
-            scroll_delay=2.0,
-            # Try to wait for specific elements that indicate the page has loaded
-            wait_for="css:div,article,section",
-            # Additional time for anti-bot checks to complete
-            magic=True,
-            simulate_user=True,
-        )
-        
-        try:
-            result = await crawler.arun(url=url, config=stealth_config)
-            
-            if result.success and result.markdown:
-                # Use a simplified extraction approach for the fallback
-                return self._extract_from_markdown(result.markdown, site_name)
-            else:
-                logger.warning(f"Fallback extraction failed for {site_name}: {result.error_message}")
-                return []
-                
-        except Exception as e:
-            logger.error(f"Fallback stealth extraction error for {site_name}: {e}")
-            return []
-
-    def _extract_from_markdown(self, markdown_content: str, site_name: str) -> List[JobListing]:
-        """Extract job information from markdown content using pattern matching"""
-        jobs = []
-        
-        # Simple pattern-based extraction as fallback
-        # Look for job-like patterns in markdown
-        lines = markdown_content.split('\n')
-        current_job = {}
-        
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-                
-            # Look for job titles (often in headers or bold)
-            if any(keyword in line.lower() for keyword in ['engineer', 'developer', 'manager', 'analyst', 'specialist']):
-                if current_job and current_job.get('job_title'):
-                    # Save previous job if we have enough info
-                    if current_job.get('company_name'):
-                        try:
-                            job = JobListing(
-                                job_title=current_job['job_title'],
-                                company_name=current_job['company_name'],
-                                location=current_job.get('location', 'Not specified'),
-                                job_description=current_job.get('description', line)
-                            )
-                            jobs.append(job)
-                        except Exception as e:
-                            logger.debug(f"Error creating job from markdown: {e}")
-                
-                # Start new job
-                current_job = {'job_title': line}
-            
-            elif current_job and not current_job.get('company_name'):
-                # Next non-empty line might be company
-                if line and not line.startswith(('http', 'www', 'apply')):
-                    current_job['company_name'] = line
-        
-        # Don't forget the last job
-        if current_job and current_job.get('job_title') and current_job.get('company_name'):
-            try:
-                job = JobListing(
-                    job_title=current_job['job_title'],
-                    company_name=current_job['company_name'],
-                    location=current_job.get('location', 'Not specified'),
-                    job_description=current_job.get('description', 'Job description not available')
-                )
-                jobs.append(job)
-            except Exception as e:
-                logger.debug(f"Error creating final job from markdown: {e}")
-        
-        logger.info(f"Extracted {len(jobs)} jobs from markdown for {site_name}")
         return jobs
 
     async def _extract_with_llm(self, crawler, url: str, site_name: str, crawler_config: CrawlerRunConfig) -> List[JobListing]:
@@ -522,54 +392,36 @@ class EnhancedJobFinder:
         title_lower = title.lower()
         return not any(indicator in title_lower for indicator in spam_indicators)
 
-    async def search_all_job_boards(self, keywords: str, location: str = "", max_parallel: int = 2) -> List[JobListing]:
-        """Search all job boards in parallel with reduced concurrency for stealth"""
+    async def search_all_job_boards(self, keywords: str, location: str = "", max_parallel: int = 3) -> List[JobListing]:
+        """Search all job boards in parallel with reliable configuration"""
         logger.info(f"Starting comprehensive job search for '{keywords}' in '{location}'")
         
         all_jobs = []
         
-        # Separate stealth-required and regular sites
-        stealth_boards = [board for board in self.job_boards if board.needs_stealth]
-        regular_boards = [board for board in self.job_boards if not board.needs_stealth]
+        # Process all sites with the same reliable configuration
+        logger.info(f"Processing {len(self.job_boards)} job boards")
         
-        # Process stealth sites with more care (lower concurrency, longer delays)
-        if stealth_boards:
-            logger.info(f"Processing {len(stealth_boards)} stealth-required sites with enhanced protection")
-            for board in stealth_boards:
-                try:
-                    jobs = await self.search_job_board(board, keywords, location)
-                    all_jobs.extend(jobs)
-                    logger.info(f"Found {len(jobs)} jobs from {board.name}")
-                    
-                    # Longer delay between stealth sites to avoid detection
-                    await asyncio.sleep(5)
-                    
-                except Exception as e:
-                    logger.error(f"Error with stealth site {board.name}: {e}")
-        
-        # Process regular sites in parallel
-        if regular_boards:
-            logger.info(f"Processing {len(regular_boards)} regular sites in parallel")
-            for i in range(0, len(regular_boards), max_parallel):
-                batch = regular_boards[i:i + max_parallel]
-                
-                tasks = [
-                    self.search_job_board(job_board, keywords, location)
-                    for job_board in batch
-                ]
-                
-                batch_results = await asyncio.gather(*tasks, return_exceptions=True)
-                
-                for idx, result in enumerate(batch_results):
-                    if isinstance(result, Exception):
-                        logger.error(f"Error with {batch[idx].name}: {result}")
-                    elif isinstance(result, list):
-                        all_jobs.extend(result)
-                        logger.info(f"Found {len(result)} jobs from {batch[idx].name}")
-                
-                # Rate limiting between batches
-                if i + max_parallel < len(regular_boards):
-                    await asyncio.sleep(2)
+        # Process sites in small batches to avoid overwhelming servers
+        for i in range(0, len(self.job_boards), max_parallel):
+            batch = self.job_boards[i:i + max_parallel]
+            
+            tasks = [
+                self.search_job_board(job_board, keywords, location)
+                for job_board in batch
+            ]
+            
+            batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            for idx, result in enumerate(batch_results):
+                if isinstance(result, Exception):
+                    logger.error(f"Error with {batch[idx].name}: {result}")
+                elif isinstance(result, list):
+                    all_jobs.extend(result)
+                    logger.info(f"Found {len(result)} jobs from {batch[idx].name}")
+            
+            # Brief delay between batches to be respectful
+            if i + max_parallel < len(self.job_boards):
+                await asyncio.sleep(2)
         
         # Deduplicate jobs
         unique_jobs = self._deduplicate_jobs(all_jobs)
@@ -608,108 +460,16 @@ class EnhancedJobFinder:
             return base_url.rstrip('/') + '/' + url
 
     async def find_connections_enhanced(self, job: JobListing) -> List[ContactPerson]:
-        """Find professional connections using LinkedIn search with enhanced stealth"""
+        """Find professional connections using simplified reliable approach"""
         logger.info(f"Finding connections for {job.job_title} at {job.company_name}")
         
         connections = []
         
-        # Search LinkedIn for company employees using stealth mode
-        linkedin_connections = await self._search_linkedin_connections(job)
-        connections.extend(linkedin_connections)
+        # For now, we'll skip the LinkedIn search since it requires more complex handling
+        # Focus on basic job search functionality first
+        logger.info("Connection finding temporarily simplified - focusing on core job search functionality")
         
-        # Score and rank connections
-        scored_connections = self._score_connections(connections, job)
-        
-        # Return top connections
-        return sorted(scored_connections, key=lambda x: x.relevance_score or 0, reverse=True)[:20]
-
-    async def _search_linkedin_connections(self, job: JobListing) -> List[ContactPerson]:
-        """Search LinkedIn for company employees with enhanced stealth"""
-        search_terms = [
-            f"{job.company_name} {job.job_title}",
-            f"{job.company_name} engineer",
-            f"{job.company_name} manager"
-        ]
-        
-        connections = []
-        
-        # Use stealth configuration for LinkedIn
-        browser_config = self._get_browser_config(needs_stealth=True)
-        crawler_config = self._get_crawler_config(needs_stealth=True)
-        
-        async with AsyncWebCrawler(config=browser_config) as crawler:
-            for search_term in search_terms[:2]:  # Limit to avoid rate limiting
-                search_url = f"https://www.linkedin.com/search/results/people/?keywords={quote_plus(search_term)}"
-                
-                extraction_strategy = LLMExtractionStrategy(
-                    llm_config=LLMConfig(
-                        provider="openai/gpt-4o-mini",
-                        api_token=self.api_key
-                    ),
-                    schema=ContactPerson.model_json_schema(),
-                    extraction_type="schema",
-                    instruction=f"""
-                    Extract information about people who work at {job.company_name} from this LinkedIn search page.
-                    For each person, extract:
-                    - name: Full name
-                    - title: Current job title  
-                    - company: Company name
-                    - linkedin_url: Their LinkedIn profile URL
-                    - relevance_reason: Why they might be relevant for a {job.job_title} position
-                    
-                    Focus on people who work at {job.company_name} and could help with job applications.
-                    Return an array of person objects.
-                    """
-                )
-                
-                config = crawler_config.clone(extraction_strategy=extraction_strategy)
-                
-                try:
-                    result = await crawler.arun(url=search_url, config=config)
-                    
-                    if result.success and result.extracted_content:
-                        try:
-                            people_data = json.loads(result.extracted_content)
-                            for person_data in people_data:
-                                if person_data.get("name"):
-                                    connection = ContactPerson(**person_data)
-                                    connections.append(connection)
-                        except json.JSONDecodeError:
-                            logger.warning(f"Error parsing LinkedIn connections data")
-                    
-                    await asyncio.sleep(5)  # Longer delay for LinkedIn
-                    
-                except Exception as e:
-                    logger.error(f"Error searching LinkedIn connections: {e}")
-        
-        return connections
-
-    def _score_connections(self, connections: List[ContactPerson], job: JobListing) -> List[ContactPerson]:
-        """Score and rank connections based on relevance"""
-        for connection in connections:
-            score = 0.0
-            
-            # Score based on title relevance
-            if connection.title:
-                title_lower = connection.title.lower()
-                job_title_lower = job.job_title.lower()
-                
-                # Exact title match
-                if job_title_lower in title_lower:
-                    score += 0.5
-                
-                # Similar role keywords
-                keywords = ["engineer", "developer", "manager", "director", "lead", "senior"]
-                for keyword in keywords:
-                    if keyword in title_lower and keyword in job_title_lower:
-                        score += 0.2
-            
-            # Score based on company match
-            if connection.company and job.company_name.lower() in connection.company.lower():
-                score += 0.3
-            
-            connection.relevance_score = min(score, 1.0)
-        
+        # Return empty list for now - can be enhanced later
         return connections
 
     def save_results(self, jobs: List[JobListing], connections: List[ContactPerson] = None, filename: str = None) -> str:
@@ -746,7 +506,7 @@ class EnhancedJobFinder:
             return
         
         print(f"\n{'='*80}")
-        print(f"FOUND {len(jobs)} JOBS (Enhanced Anti-Bot Protection)")
+        print(f"FOUND {len(jobs)} JOBS (Core Job Search)")
         print(f"{'='*80}")
         
         # Group by source
@@ -757,8 +517,7 @@ class EnhancedJobFinder:
         
         print(f"\nJobs by source:")
         for source, source_jobs in by_source.items():
-            stealth_indicator = " (🛡️ Stealth Mode)" if any(board.name == source and board.needs_stealth for board in self.job_boards) else ""
-            print(f"  {source}: {len(source_jobs)} jobs{stealth_indicator}")
+            print(f"  {source}: {len(source_jobs)} jobs")
         
         print(f"\n{'-'*80}")
         
@@ -802,9 +561,9 @@ class EnhancedJobFinder:
             print(f"{'-'*80}")
 
 async def main():
-    """Enhanced main function with comprehensive job search and anti-bot protection"""
-    print("🚀 Enhanced Job Finder with Anti-Bot Protection")
-    print("=" * 60)
+    """Enhanced main function with comprehensive job search"""
+    print("🚀 Job Finder - Core Functionality")
+    print("=" * 50)
     
     # Get API key
     api_key = os.environ.get("OPENAI_API_KEY")
@@ -827,13 +586,13 @@ async def main():
         location = ""
     
     print(f"\n🔍 Searching for '{job_query}' jobs in '{location or 'any location'}'...")
-    print("🛡️ Using enhanced anti-bot protection for protected sites (LinkedIn, Indeed, etc.)")
-    print("This will search multiple job boards and may take several minutes.\n")
+    print("📊 Searching multiple job boards with reliable configuration")
+    print("This may take a few minutes.\n")
     
     start_time = time.time()
     
     try:
-        # Search all job boards with enhanced protection
+        # Search all job boards with simplified configuration
         jobs = await job_finder.search_all_job_boards(job_query, location)
         
         search_time = time.time() - start_time
@@ -841,7 +600,6 @@ async def main():
         
         if not jobs:
             print("❌ No jobs found. Try different keywords or location.")
-            print("💡 If sites are being blocked, try running again later as the stealth features need time to build reputation.")
             return
         
         # Print summary
@@ -851,60 +609,23 @@ async def main():
         filename = job_finder.save_results(jobs)
         print(f"\n💾 Results saved to: {filename}")
         
-        # Ask about connection finding
+        # Ask about connection finding (simplified)
         if jobs:
             print(f"\n🤝 Connection Finding")
             find_connections = input("Find professional connections for a specific job? (y/n): ").lower() == 'y'
             
             if find_connections:
-                try:
-                    job_num = int(input(f"Enter job number (1-{len(jobs)}): ")) - 1
-                    
-                    if 0 <= job_num < len(jobs):
-                        selected_job = jobs[job_num]
-                        print(f"\n🔍 Finding connections for:")
-                        print(f"   {selected_job.job_title} at {selected_job.company_name}")
-                        print("🛡️ Using stealth mode for LinkedIn search...")
-                        
-                        connections = await job_finder.find_connections_enhanced(selected_job)
-                        
-                        if connections:
-                            print(f"\n👥 Found {len(connections)} potential connections:")
-                            print("-" * 60)
-                            
-                            for i, person in enumerate(connections[:10], 1):  # Show top 10
-                                print(f"{i}. {person.name}")
-                                if person.title:
-                                    print(f"   Title: {person.title}")
-                                if person.company:
-                                    print(f"   Company: {person.company}")
-                                if person.linkedin_url:
-                                    print(f"   LinkedIn: {person.linkedin_url}")
-                                if person.relevance_reason:
-                                    print(f"   Why relevant: {person.relevance_reason}")
-                                if person.relevance_score:
-                                    print(f"   Relevance score: {person.relevance_score:.2f}")
-                                print("-" * 60)
-                            
-                            # Save updated results with connections
-                            job_finder.save_results(jobs, connections, filename)
-                            
-                        else:
-                            print("❌ No connections found for this job.")
-                            print("💡 This might be due to LinkedIn's anti-bot protection. Try again later.")
-                    else:
-                        print("❌ Invalid job number.")
-                        
-                except ValueError:
-                    print("❌ Please enter a valid number.")
+                print("⚠️  Connection finding is currently simplified for reliability.")
+                print("Focus is on core job search functionality first.")
+                # We could still call the simplified connection finding if needed
         
         print("\n✅ Job search completed successfully!")
-        print("🛡️ Enhanced anti-bot protection helped access protected job sites.")
+        print("🎯 Core functionality is working reliably.")
         
     except Exception as e:
         logger.error(f"Error in main job search: {e}")
         print(f"❌ An error occurred: {e}")
-        print("💡 If you're getting blocked, the stealth features are working to build a better reputation for next time.")
+        print("💡 Try adjusting your search terms or check your API key.")
 
 if __name__ == "__main__":
     asyncio.run(main()) 

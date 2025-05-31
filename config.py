@@ -11,6 +11,19 @@ JOB_SEARCH_CONFIG = {
     "recent_jobs_only": True,  # Focus on jobs posted within last 30 days
 }
 
+# Job board configuration - easily enable/disable individual boards
+JOB_BOARD_CONFIG = {
+    "LinkedIn": True,      # Working but has some validation issues with job descriptions
+    "Indeed": False,       # Failing with extraction errors - 'NoneType' object has no attribute 'strip'
+    "Glassdoor": True,     # Working excellently - found 31 relevant jobs
+    "ZipRecruiter": False, # Failing with extraction errors
+    "AngelList": False,    # Returning irrelevant tech jobs for non-tech searches (e.g., speech pathologist)
+    "Remote.co": False,    # Failing with extraction errors
+    "SimplyHired": True,   # Working well - found 18-20 relevant jobs
+    "Monster": False,      # Failing with extraction errors
+    "Dice": False,         # Failing with extraction errors - primarily tech-focused anyway
+}
+
 # LLM settings
 LLM_CONFIG = {
     "provider": "openai/gpt-4.1-nano",
