@@ -324,8 +324,3 @@ The enhanced job finder is production-ready with:
 ---
 
 *Built using Python, Crawl4AI, and OpenAI GPT-4o-mini*
-# job-finder
-# job-finder
-# job-finder
-# job-finder
-# job-finder
